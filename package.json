@@ -5,8 +5,13 @@
   "main": "index.js",
   "dependencies": {
     "async": "^1.5.2",
+    "cheerio": "^0.20.0",
     "googleapis": "^2.1.7",
+    "inquirer": "^0.12.0",
+    "mailcomposer": "^3.12.0",
+    "mkdirp": "^0.5.1",
     "moment": "^2.11.2",
+    "request": "^2.69.0",
     "xlsx-template": "^0.0.3"
   },
   "devDependencies": {},

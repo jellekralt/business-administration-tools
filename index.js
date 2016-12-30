@@ -6,11 +6,11 @@ const spawn = require('child_process').spawn;
 const mailcomposer = require('mailcomposer');
 
 const config = require('./config.json');
-var Sheet = require('./lib/sheet');
+const Sheet = require('./lib/sheet');
 
-var MONTHS = ['Januari','Februari','Maart','April','Mei','Juni','Juli','Augustus','September','Oktober','November','December'];
+const MONTHS = ['Januari','Februari','Maart','April','Mei','Juni','Juli','Augustus','September','Oktober','November','December'];
 
-var questions = [
+const questions = [
     {
         type: 'input',
         name: 'month',
@@ -28,12 +28,12 @@ var questions = [
 
 inquirer.prompt(questions, function( answers ) {
 
-    var date = new Date(answers.year + '-' + answers.month + '-1');
-    var monthName = MONTHS[date.getMonth()];
-    var monthPadded = ('0' + (date.getMonth() + 1)).slice(-2);
+    let date = new Date(answers.year + '-' + answers.month + '-1');
+    let monthName = MONTHS[date.getMonth()];
+    let monthPadded = ('0' + (date.getMonth() + 1)).slice(-2);
 
-    var hourSheetPath = config.hourSheetPath + '/' + answers.year + ' ' + monthPadded + ' - ' + monthName;
-    var declarationPath = config.declarationPath + '/' + answers.year + ' ' + monthPadded + ' - ' + monthName;
+    let hourSheetPath = `${config.hourSheetPath}/${answers.year} ${monthPadded} - ${monthName}`;
+    let declarationPath = `${config.declarationPath}/${answers.year} ${monthPadded} - ${monthName}`;
 
     console.log('Writing hoursheets to ' + hourSheetPath);
 
@@ -67,9 +67,9 @@ inquirer.prompt(questions, function( answers ) {
 
         });
 
-        var mailTemplateStream = fs.createReadStream(path.join(__dirname, 'templates', '***REMOVED***'));
+        let mailTemplateStream = fs.createReadStream(path.join(__dirname, 'templates', '***REMOVED***'));
 
-        var mail = mailcomposer({
+        let mail = mailcomposer({
             from: '***REMOVED*** <***REMOVED***>',
             to: '***REMOVED***',
             subject: 'Urenverantwoording ' + monthName + ' 2016',

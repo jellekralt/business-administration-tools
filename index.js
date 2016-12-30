@@ -41,36 +41,28 @@ inquirer.prompt(questions, function( answers ) {
 
         if (err) throw err;
 
-        var nuonHourSheet = Sheet.init({
-            name: '***REMOVED***',
-            template: path.join(__dirname, 'templates', 'hours-nuon.xlsx')
-        }, function() {
-            var filePath = path.join(hourSheetPath, 'Hoursheet ***REMOVED*** - ***REMOVED*** - ' + monthName + ' ' + answers.year + '.xlsx');
+        config.sheets.forEach(function(sheetData) {
 
-            console.log('Writing ' + filePath);
+            let sheet = Sheet.init({
+                name: '***REMOVED***',
+                client: '***REMOVED***',
+                project: '***REMOVED***',
+                template: path.join(__dirname, 'templates', sheetData.templateFilename)
+            }, function() {
+                let exportFilename = sheetData.exportFilename
+                    .replace('%monthName%', monthName)
+                    .replace('%year%', answers.year);
 
-            nuonHourSheet.process(answers.year, answers.month, function() {
-                nuonHourSheet.export(filePath, function() {
-                    spawn('open', [filePath]);
+                let filePath = path.join(hourSheetPath, exportFilename);
+
+                console.log('Writing ' + filePath);
+
+                sheet.process(answers.year, answers.month, function() {
+                    sheet.export(filePath, function() {
+                        spawn('open', [filePath]);
+                    });
                 });
-            });
 
-        });
-
-        var ***REMOVED***HourSheet = Sheet.init({
-            name: '***REMOVED***',
-            client: '***REMOVED***',
-            project: '***REMOVED***',
-            template: path.join(__dirname, 'templates', 'hours-internal.xlsx')
-        }, function() {
-            var filePath = path.join(hourSheetPath, 'Uren intern - ***REMOVED*** - ' + monthName + ' ' + answers.year + '.xlsx');
-
-            console.log('Writing ' + filePath);
-
-            ***REMOVED***HourSheet.process(answers.year, answers.month, function() {
-                ***REMOVED***HourSheet.export(filePath, function() {
-                    spawn('open', [filePath]);
-                });
             });
 
         });

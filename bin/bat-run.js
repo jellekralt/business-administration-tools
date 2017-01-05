@@ -8,6 +8,7 @@ const chalk = require('chalk');
 const Preferences = require('preferences');
 const AdminTools = require('../lib/admin-tools');
 const Conf = require('conf');
+const Spinner = require('cli-spinner').Spinner;
 
 let prefs = new Preferences('com.jellekralt.bat', {
     setup: false
@@ -46,6 +47,11 @@ if (prefs.setup) {
 
     inquirer.prompt(questions).then(function(answers) {
 
+        let spinner = new Spinner(`%s Writing hoursheets to ${config.get('paths.hourSheets')}`);
+
+        spinner.setSpinnerString(18);
+        spinner.start();
+
         adminTools.run({
             year: answers.year, 
             month: answers.month,
@@ -55,6 +61,10 @@ if (prefs.setup) {
             declarationPath: config.get('paths.declarations'),
             sheets: config.get('sheets'),
             calendars: config.get('calendars')
+        }).then(function(files) {
+            spinner.stop(true);
+            console.log(chalk.yellow(`✓ Written hoursheets to ${config.get('paths.hourSheets')}`));
+            files.forEach((file) => console.log(chalk.yellow(`  ➟ Created ${file}`)));
         });
 
     }).catch(function(err) {

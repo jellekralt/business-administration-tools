@@ -13,6 +13,10 @@ let prefs = new Preferences('com.jellekralt.bat', {
     setup: false
 });
 
+let adminTools = new AdminTools({
+    debug: true
+});
+
 const config = new Conf({
     configName: 'config',
     cwd: prefs.path
@@ -20,6 +24,7 @@ const config = new Conf({
 
 program
     .option('-f, --force', 'force run')
+    .option('--debug', 'debug mode')
     .parse(process.argv);
 
 const questions = [
@@ -41,7 +46,7 @@ if (prefs.setup) {
 
     inquirer.prompt(questions).then(function(answers) {
 
-        AdminTools.run({
+        adminTools.run({
             year: answers.year, 
             month: answers.month,
             credentials: prefs.oAuthTokens,

@@ -179,7 +179,7 @@ function pickCalendars() {
         credentials: prefs.oAuthTokens
     });
 
-    cal.getCalendars(function(calendars) {
+    cal.getCalendars().then(function(calendars) {
 
         inquirer.prompt([
             {

@@ -148,7 +148,9 @@ inquirer.prompt([
         }
     }
 ]).then(function(answers) {
-    let paths = Object.keys(answers).reduce((items, key) => pathAnswers.indexOf(key) > -1 ? items.push(answers[key]) && items : items, []);    
+    let paths = Object.keys(answers).reduce((items, key) => pathAnswers.indexOf(key) > -1 ? items.push(answers[key]) && items : items, []);
+
+    paths.push(`${answers.configPath}/templates`);
     
     createDirectories(paths)
         .then(() => createConfig(answers.configPath, answers))

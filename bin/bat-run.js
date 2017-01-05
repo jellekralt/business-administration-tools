@@ -50,6 +50,7 @@ if (prefs.setup) {
             year: answers.year, 
             month: answers.month,
             credentials: prefs.oAuthTokens,
+            templatePath: `${prefs.path}/templates`,
             hourSheetPath: config.get('paths.hourSheets'),
             declarationPath: config.get('paths.declarations'),
             sheets: config.get('sheets'),

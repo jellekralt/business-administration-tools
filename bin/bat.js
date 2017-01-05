@@ -2,26 +2,11 @@
 
 'use strict'
 
-const argv = require('minimist')(process.argv.slice(2));
-const inquirer = require('inquirer');
-const AdminTools = require('../lib/admin-tools');
+const program = require('commander');
+const pack = require('../package.json');
 
-const questions = [
-    {
-        type: 'input',
-        name: 'month',
-        message: 'Select a month (1-12)',
-        default: function () { return new Date().getMonth() + 1; }
-    },
-    {
-        type: 'input',
-        name: 'year',
-        message: 'Select a year',
-        default: function () { return new Date().getFullYear(); }
-    }
-];
-
-inquirer.prompt(questions, function(answers) {
-    console.log(answers);
-    AdminTools.run(answers.year, answers.month);
-});
+program
+    .version(pack.version)
+    .command('setup', 'setup stuff')
+    .command('run', 'search with optional query', {isDefault: true}).alias('r')
+    .parse(process.argv);

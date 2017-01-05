@@ -18,7 +18,7 @@ bat run
 
 ## TODO
 * [x] Add setup 
-* [ ] Remove all references to company
+* [x] Remove all references to company
 * [ ] Cleanup cli scripts and add proper design pattern
 * [ ] Cleanup classes
 * [ ] Rewrite all callbacks to promises

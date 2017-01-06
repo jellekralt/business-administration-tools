@@ -28,27 +28,24 @@ program
     .option('--debug', 'debug mode')
     .parse(process.argv);
 
-const questions = [
-    {
-        type: 'input',
-        name: 'month',
-        message: 'Select a month (1-12)',
-        default: function () { return new Date().getMonth() + 1; }
-    },
-    {
-        type: 'input',
-        name: 'year',
-        message: 'Select a year',
-        default: function () { return new Date().getFullYear(); }
-    }
-];
-
 if (prefs.setup) {
 
-    inquirer.prompt(questions).then(function(answers) {
+    inquirer.prompt([
+        {
+            type: 'input',
+            name: 'month',
+            message: 'Select a month (1-12)',
+            default: function () { return new Date().getMonth() + 1; }
+        },
+        {
+            type: 'input',
+            name: 'year',
+            message: 'Select a year',
+            default: function () { return new Date().getFullYear(); }
+        }
+    ]).then(function(answers) {
 
         let spinner = new Spinner(`%s Writing hoursheets to ${config.get('paths.hourSheets')}`);
-
         spinner.setSpinnerString(18);
         spinner.start();
 

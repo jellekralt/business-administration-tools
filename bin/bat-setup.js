@@ -15,28 +15,15 @@ const fs = Promise.promisifyAll(require('fs-extra'));
 const opn = require('opn');
 const defaultConfig = require('../config.default.json');
 const Conf = require('conf');
-
 const Calendar = require('../lib/calendar');
+const Auth = require('../lib/auth');
+const auth = new Auth();
 
-var config;
-var google = require('googleapis');
-var OAuth2 = google.auth.OAuth2;
+const pathAnswers = ['configPath', 'exportPathHourSheets', 'exportPathDeclarations'];
 
-var Auth = require('../lib/auth');
-var auth = new Auth();
-
-
-var oauth2Client = new OAuth2(
-    '***REMOVED***',
-    '***REMOVED***',
-    'http://localhost:9999'
-);
-
-var scopes = [
-  'https://www.googleapis.com/auth/calendar'
-];
-
-var server, spinner;
+let config;
+let server
+let spinner;
 
 program
     .option('-f, --force', 'force installation')
@@ -48,80 +35,11 @@ let prefs = new Preferences('com.jellekralt.bat', {
     setup: false
 });
 
-const pathAnswers = ['configPath', 'exportPathHourSheets', 'exportPathDeclarations'];
+/**
+ * Flow
+ */
 
-function createDirectories(paths) {
-    paths = paths.map((path) => path.replace('~', os.homedir()));
-
-    return Promise.all(paths.map((path) => fs.mkdirp(path)));
-}
-
-function createConfig(path, answers) {
-    config = new Conf({
-        defaults: defaultConfig,
-        configName: 'config',
-        cwd: path
-    });
-
-    config.set('paths.hourSheets', answers.exportPathHourSheets);
-    config.set('paths.declarations', answers.exportPathDeclarations);
-    
-    prefs.path = answers.configPath;
-}
-
-function linkCalendar() {
-    server = http.createServer(handleCalendarOauth);
-
-    var url = oauth2Client.generateAuthUrl({
-        // 'online' (default) or 'offline' (gets refresh_token)
-        access_type: 'offline',
-
-        // If you only need one scope you can pass it as string
-        scope: 'https://www.googleapis.com/auth/calendar'
-    });
-
-    setLoader();
-
-    server.listen(9999, function() {
-        //DEBUG: console.log('Temporary oAuth Server Listening on http://localhost:9999');
-    });
-
-    opn(url);
-}
-
-function setLoader() {
-    spinner = new Spinner('%s Linking calendar account, check your browser...');
-    spinner.setSpinnerString(18);
-    spinner.start();
-}
-
-function handleCalendarOauth(req, res) {
-    let parsedUrl = url.parse(req.url, true); // true to get query as object
-    let qParams = parsedUrl.query;
-
-    res.end('CoOol');
-    server.close();
-
-    if (qParams.code) {
-        prefs.oAuthCode = qParams.code;
-
-        auth.getToken(qParams.code).then(function(tokens) {
-            prefs.oAuthTokens = tokens;
-
-            spinner.stop(true);
-            
-            pickCalendars();
-        });
-        
-    } else {
-        spinner.stop(true);
-
-        console.log(chalk.red('No valid oAuth code passed'));
-    }
-
-}
-
-
+// Ask user for initial questions
 inquirer.prompt([
     {
         type: 'input',
@@ -147,55 +65,148 @@ inquirer.prompt([
             return os.homedir() + '/Documents/Declarations';
         }
     }
-]).then(function(answers) {
+]).then((answers) => {
+    
+    // Create the paths
     let paths = Object.keys(answers).reduce((items, key) => pathAnswers.indexOf(key) > -1 ? items.push(answers[key]) && items : items, []);
 
     paths.push(`${answers.configPath}/templates`);
     
-    createDirectories(paths)
-        .then(() => createConfig(answers.configPath, answers))
-        .then(function() {
-            prefs.setup = true;
-
-            inquirer.prompt({
-                type: 'confirm',
-                name: 'useCalendar',
-                message: 'Do you want to link your Google Calendar account?',
-                default: true
-            }).then(function(answers) {
-                if (answers.useCalendar) {
-                    linkCalendar();
-                }
-            })
-
-
-        }).catch(function(err) {
-            console.log('ERR: ' + err)
-        });
-});
-
-
-function pickCalendars() {
-
-    var cal = Calendar.init({
-        credentials: prefs.oAuthTokens
+    return createDirectories(paths).then(() => {
+        return answers;
     });
 
-    cal.getCalendars().then(function(calendars) {
+}).then((answers) => {
+    return createConfig(answers.configPath, answers);
+}).then(function(answers) {
+    prefs.setup = true;
 
-        inquirer.prompt([
-            {
-                type: 'list',
-                name: 'holidayCalendars',
-                message: 'Select one or more calendars for your days off',
-                choices: calendars.items.map((cal) => ({name: cal.summary, value: cal.id}))
-            }
-        ]).then(function(answers) {
-            
-            config.set('calendars.holidays', answers.holidayCalendars);
-            process.exit();
+    return inquirer.prompt({
+        type: 'confirm',
+        name: 'useCalendar',
+        message: 'Do you want to link your Google Calendar account?',
+        default: true
+    });
+}).then(function(answers) {
+    if (answers.useCalendar) {
+        
+        return startServer()
+            .then(openBrowser)
+            .then((code) => prefs.oAuthCode = code)
+            .then((code) => auth.getToken(code))
+            .then((tokens) => prefs.oAuthTokens = tokens)
+            .then(stopLoader)
+            .then(getCalendars)
+            .then((calendars) => inquirer.prompt([
+                {
+                    type: 'list',
+                    name: 'holidayCalendars',
+                    message: 'Select one or more calendars for your days off',
+                    choices: calendars.items.map((cal) => ({name: cal.summary, value: cal.id}))
+                }
+            ]))
+            .then(() => config.set('calendars.holidays', answers.holidayCalendars))
+            .catch(stopLoader);
+        
+    } else {
+        return false;
+    }
+}).then(() => {
+    console.log(chalk.yellow(`✓ Setup run successfully!`));
+    process.exit();
+}).catch(function(err) {
+    throw err;
+});;
 
+
+/**
+ * Functions
+ */
+
+function startServer() {
+    return new Promise((resolve, reject) => {
+        let deferred = defer();
+
+        setLoader();
+        server = http.createServer((req, res) => listen(req, res, deferred));
+        server.listen(9999, () => {
+            resolve(deferred);
         });
 
     });
 }
+
+function listen(req, res, deferred) {
+    let parsedUrl = url.parse(req.url, true); // true to get query as object
+    let qParams = parsedUrl.query;
+
+    res.end('CoOol');
+    server.close();    
+
+    if (qParams.code) {
+        deferred.resolve(qParams.code);
+    } else {
+        deferred.reject('No valid oAuth code passed');
+    }
+
+}
+
+function defer() {
+    var resolve, reject;
+    var promise = new Promise(function() {
+        resolve = arguments[0];
+        reject = arguments[1];
+    });
+    return {
+        resolve: resolve,
+        reject: reject,
+        promise: promise
+    };
+}
+
+function openBrowser(deferred) {    
+    opn(auth.getAuthUrl());
+    
+    return deferred.promise;
+}
+
+function setLoader() {
+    spinner = new Spinner('%s Linking calendar account, check your browser...');
+    spinner.setSpinnerString(18);
+    spinner.start();
+}
+
+function stopLoader() {
+    spinner.stop(true);
+}
+
+function getCalendars() {
+    var cal = Calendar.init({
+        credentials: prefs.oAuthTokens
+    });
+
+    return cal.getCalendars();
+}
+
+function createDirectories(paths) {
+    paths = paths.map((path) => path.replace('~', os.homedir()));
+
+    return Promise.all(paths.map((path) => fs.mkdirp(path)));
+}
+
+function createConfig(path, answers) {
+    config = new Conf({
+        defaults: defaultConfig,
+        configName: 'config',
+        cwd: path
+    });
+
+    config.set('paths.hourSheets', answers.exportPathHourSheets);
+    config.set('paths.declarations', answers.exportPathDeclarations);
+    
+    prefs.path = answers.configPath;
+
+    return answers;
+}
+
+

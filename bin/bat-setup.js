@@ -19,7 +19,7 @@ const Calendar = require('../lib/calendar');
 const Auth = require('../lib/auth');
 const auth = new Auth();
 
-const pathAnswers = ['configPath', 'exportPathHourSheets', 'exportPathDeclarations'];
+const pathFilter = ['configPath', 'exportPathHourSheets', 'exportPathDeclarations'];
 
 let config;
 let server
@@ -39,84 +39,99 @@ let prefs = new Preferences('com.jellekralt.bat', {
  * Flow
  */
 
-// Ask user for initial questions
-inquirer.prompt([
-    {
-        type: 'input',
-        name: 'configPath',
-        message: 'Select a config path',
-        default: function() {
-            return os.homedir() + '/.bat/'
+Promise.coroutine(function *() {
+
+    let pathAnswers = yield inquirer.prompt([
+        {
+            type: 'input',
+            name: 'configPath',
+            message: 'Select a config path',
+            default: function() {
+                return os.homedir() + '/.bat/'
+            }
+        },
+        {
+            type: 'input',
+            name: 'exportPathHourSheets',
+            message: 'Select an export path for your hour sheets',
+            default: function() {
+                return os.homedir() + '/Documents/Hoursheets';
+            }
+        },
+        {
+            type: 'input',
+            name: 'exportPathDeclarations',
+            message: 'Select an export path for your declarations',
+            default: function() {
+                return os.homedir() + '/Documents/Declarations';
+            }
         }
-    },
-    {
-        type: 'input',
-        name: 'exportPathHourSheets',
-        message: 'Select an export path for your hour sheets',
-        default: function() {
-            return os.homedir() + '/Documents/Hoursheets';
-        }
-    },
-    {
-        type: 'input',
-        name: 'exportPathDeclarations',
-        message: 'Select an export path for your declarations',
-        default: function() {
-            return os.homedir() + '/Documents/Declarations';
-        }
-    }
-]).then((answers) => {
+    ]);
+
+    // Filter out the paths
+    let paths = Object.keys(pathAnswers).reduce((items, key) => pathFilter.indexOf(key) > -1 ? items.push(pathAnswers[key]) && items : items, []);
+    paths.push(`${pathAnswers.configPath}/templates`);
     
-    // Create the paths
-    let paths = Object.keys(answers).reduce((items, key) => pathAnswers.indexOf(key) > -1 ? items.push(answers[key]) && items : items, []);
+    // Create the entered directories
+    yield createDirectories(paths);
 
-    paths.push(`${answers.configPath}/templates`);
+    // Create the config
+    createConfig(pathAnswers.configPath, pathAnswers);
     
-    return createDirectories(paths).then(() => {
-        return answers;
-    });
-
-}).then((answers) => {
-    return createConfig(answers.configPath, answers);
-}).then(function(answers) {
-    prefs.setup = true;
-
-    return inquirer.prompt({
+    // Ask for Google Calendar integration
+    let useGoogleCalendar = yield inquirer.prompt({
         type: 'confirm',
         name: 'useCalendar',
         message: 'Do you want to link your Google Calendar account?',
         default: true
     });
-}).then(function(answers) {
-    if (answers.useCalendar) {
-        
-        return startServer()
-            .then(openBrowser)
-            .then((code) => prefs.oAuthCode = code)
-            .then((code) => auth.getToken(code))
-            .then((tokens) => prefs.oAuthTokens = tokens)
-            .then(stopLoader)
-            .then(getCalendars)
-            .then((calendars) => inquirer.prompt([
-                {
-                    type: 'list',
-                    name: 'holidayCalendars',
-                    message: 'Select one or more calendars for your days off',
-                    choices: calendars.items.map((cal) => ({name: cal.summary, value: cal.id}))
-                }
-            ]))
-            .then(() => config.set('calendars.holidays', answers.holidayCalendars))
-            .catch(stopLoader);
-        
-    } else {
+
+    if (useGoogleCalendar.useCalendar && !prefs.oAuthTokens) {
+        // Start local server
+        let deferred = yield startServer();
+        // Open the browser
+        openBrowser(); 
+        // Get the code from the browser request, store it in prefs
+        let code = yield deferred.promise;
+        prefs.oAuthCode = code;
+        // Get an oauth token with the code, store it in prefs
+        let tokens = yield auth.getToken(code);
+        prefs.oAuthTokens = tokens;
+        // Fetch the calendars
+        let calendars = yield getCalendars();
+        // Stop the loader
+        stopLoader();
+        // Ask the user to pick a calendar
+        let calendarAnswers = yield inquirer.prompt([
+            {
+                type: 'list',
+                name: 'holidayCalendars',
+                message: 'Select one or more calendars for your days off',
+                choices: calendars.items.map((cal) => ({name: cal.summary, value: cal.id}))
+            }
+        ]);
+        // Store the chosen calendar in the config
+        config.set('calendars.holidays', calendarAnswers.holidayCalendars)
+
+    } else if (!useGoogleCalendar.useCalendar) {
+        // Clear the oauth token
+        prefs.oAuthTokens = null;
         return false;
     }
-}).then(() => {
+
+    // Wrap up
+    prefs.setup = true;
     console.log(chalk.yellow(`✓ Setup run successfully!`));
     process.exit();
-}).catch(function(err) {
-    throw err;
-});;
+
+
+})().catch(function(err) {
+    stopLoader();
+    console.error(err.stack);
+    process.exit();
+});
+
+
 
 
 /**
@@ -140,7 +155,12 @@ function listen(req, res, deferred) {
     let parsedUrl = url.parse(req.url, true); // true to get query as object
     let qParams = parsedUrl.query;
 
-    res.end('CoOol');
+    res.end(`
+        <body>
+            <h1>Token received</h1>
+            <p>You can close this browser window now, and return to the console</p>
+            <script>window.close();</script>
+    `);
     server.close();    
 
     if (qParams.code) {
@@ -166,8 +186,6 @@ function defer() {
 
 function openBrowser(deferred) {    
     opn(auth.getAuthUrl());
-    
-    return deferred.promise;
 }
 
 function setLoader() {

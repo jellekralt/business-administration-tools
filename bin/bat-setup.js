@@ -3,6 +3,7 @@
 'use strict'
 
 const os = require('os');
+const path = require('path');
 const http = require('http');
 const url = require('url');
 const program = require('commander');
@@ -19,8 +20,10 @@ const Calendar = require('../lib/calendar');
 const Auth = require('../lib/auth');
 const auth = new Auth();
 
+const defaultParts = ['paths', 'calendar'];
 const pathFilter = ['configPath', 'exportPathHourSheets', 'exportPathDeclarations'];
 
+let isPartialSetup = false;
 let config;
 let server
 let spinner;
@@ -29,100 +32,212 @@ program
     .option('-f, --force', 'force installation')
     .parse(process.argv);
 
-let pkgs = program.args;
+let parts = program.args;
 
 let prefs = new Preferences('com.jellekralt.bat', {
     setup: false
 });
+
+if (parts.length > 0) {
+    isPartialSetup = true;
+} else {
+    parts = defaultParts;
+}
+
+// Map parts
+parts = defaultParts.concat(parts).reduce((total, part) => {
+    total[part] = parts.indexOf(part) > -1;
+    return total;
+}, {});
+
 
 /**
  * Flow
  */
 
 Promise.coroutine(function *() {
-
-    let pathAnswers = yield inquirer.prompt([
-        {
-            type: 'input',
-            name: 'configPath',
-            message: 'Select a config path',
-            default: function() {
-                return os.homedir() + '/.bat/'
-            }
-        },
-        {
-            type: 'input',
-            name: 'exportPathHourSheets',
-            message: 'Select an export path for your hour sheets',
-            default: function() {
-                return os.homedir() + '/Documents/Hoursheets';
-            }
-        },
-        {
-            type: 'input',
-            name: 'exportPathDeclarations',
-            message: 'Select an export path for your declarations',
-            default: function() {
-                return os.homedir() + '/Documents/Declarations';
-            }
-        }
-    ]);
-
-    // Filter out the paths
-    let paths = Object.keys(pathAnswers).reduce((items, key) => pathFilter.indexOf(key) > -1 ? items.push(pathAnswers[key]) && items : items, []);
-    paths.push(`${pathAnswers.configPath}/templates`);
     
-    // Create the entered directories
-    yield createDirectories(paths);
+    if (!prefs.path && !parts.paths) {
+        return console.log(chalk.red(`You need to make sure you've run the entire setup before you can run parts of it`));
+    }
 
-    // Create the config
-    createConfig(pathAnswers.configPath, pathAnswers);
-    
-    // Ask for Google Calendar integration
-    let useGoogleCalendar = yield inquirer.prompt({
-        type: 'confirm',
-        name: 'useCalendar',
-        message: 'Do you want to link your Google Calendar account?',
-        default: true
-    });
+    if (parts.paths) {
 
-    if (useGoogleCalendar.useCalendar) {
-
-        setLoader();
-
-        if (!prefs.oAuthTokens) {
-            // Start local server
-            let deferred = yield startServer();
-            // Open the browser
-            openBrowser(); 
-            // Get the code from the browser request, store it in prefs
-            let code = yield deferred.promise;
-            prefs.oAuthCode = code;
-            // Get an oauth token with the code, store it in prefs
-            let tokens = yield auth.getToken(code);
-            prefs.oAuthTokens = tokens;
-        }
-
-        // Fetch the calendars
-        let calendars = yield getCalendars();
-        // Stop the loader
-        stopLoader();
-        // Ask the user to pick a calendar
-        let calendarAnswers = yield inquirer.prompt([
+        let pathAnswers = yield inquirer.prompt([
             {
-                type: 'list',
-                name: 'holidayCalendars',
-                message: 'Select one or more calendars for your days off',
-                choices: calendars.items.map((cal) => ({name: cal.summary, value: cal.id}))
+                type: 'input',
+                name: 'configPath',
+                message: 'Select a config path',
+                default: function() {
+                    return os.homedir() + '/.bat/'
+                }
+            },
+            {
+                type: 'input',
+                name: 'exportPathHourSheets',
+                message: 'Select an export path for your hour sheets',
+                default: function() {
+                    return os.homedir() + '/Documents/Hoursheets';
+                }
+            },
+            {
+                type: 'input',
+                name: 'exportPathDeclarations',
+                message: 'Select an export path for your declarations',
+                default: function() {
+                    return os.homedir() + '/Documents/Declarations';
+                }
             }
         ]);
-        // Store the chosen calendar in the config
-        config.set('calendars.holidays', calendarAnswers.holidayCalendars)
 
-    } else if (!useGoogleCalendar.useCalendar) {
-        // Clear the oauth token
-        prefs.oAuthTokens = null;
-        return false;
+        // Filter out the paths
+        let paths = Object.keys(pathAnswers).reduce((items, key) => pathFilter.indexOf(key) > -1 ? items.push(pathAnswers[key]) && items : items, []);
+        paths.push(`${pathAnswers.configPath}/templates`);
+        
+        // Create the entered directories
+        yield createDirectories(paths);
+
+        // Create the config
+        createConfig(pathAnswers.configPath);
+
+        config.set('paths.hourSheets', pathAnswers.exportPathHourSheets);
+        config.set('paths.declarations', pathAnswers.exportPathDeclarations);
+        
+    } else {
+        createConfig(prefs.path);
+    }
+
+    if (parts.calendar) {
+    
+        // Ask for Google Calendar integration
+        let useGoogleCalendar = yield inquirer.prompt({
+            type: 'confirm',
+            name: 'useCalendar',
+            message: 'Do you want to link your Google Calendar account?',
+            default: true
+        });
+
+        if (useGoogleCalendar.useCalendar) {
+
+            setLoader();
+
+            if (!prefs.oAuthTokens) {
+                // Start local server
+                let deferred = yield startServer();
+                // Open the browser
+                openBrowser(); 
+                // Get the code from the browser request, store it in prefs
+                let code = yield deferred.promise;
+                prefs.oAuthCode = code;
+                // Get an oauth token with the code, store it in prefs
+                let tokens = yield auth.getToken(code);
+                prefs.oAuthTokens = tokens;
+            }
+
+            // Fetch the calendars
+            let calendars = yield getCalendars();
+            // Stop the loader
+            stopLoader();
+            // Ask the user to pick a calendar
+            let calendarAnswers = yield inquirer.prompt([
+                {
+                    type: 'list',
+                    name: 'holidayCalendars',
+                    message: 'Select one or more calendars for your days off',
+                    choices: calendars.items.map((cal) => ({name: cal.summary, value: cal.id}))
+                }
+            ]);
+            // Store the chosen calendar in the config
+            config.set('calendars.holidays', calendarAnswers.holidayCalendars)
+
+        } else if (!useGoogleCalendar.useCalendar) {
+            // Clear the oauth token
+            prefs.oAuthTokens = null;
+            return false;
+        }
+
+    }
+
+    if (parts.sheets) {
+        let sheetFiles = yield getTemplateFiles(`${prefs.path}/templates`);
+
+        console.log('sheetFiles', sheetFiles);
+        
+        
+        let sheetConfig = yield Promise.mapSeries(sheetFiles, (file) => {
+            return inquirer.prompt([
+                {
+                    type: 'confirm',
+                    name: 'useFile',
+                    message: `Do you want to add '${file}' as a sheet template?`
+                },
+                {
+                    type: 'input',
+                    name: 'name',
+                    message: 'Give this template a reference',
+                    validate: function(value) {
+                        return value !== '';
+                    },
+                    when: function (answers) {
+                        return answers.useFile;
+                    }
+                },
+                {
+                    type: 'input',
+                    name: 'exportFilename',
+                    message: 'What should the exported filename be?',
+                    default: function(answers) {
+                        return `%year% %monthName% - ${answers.name}${path.extname(file)}`;
+                    },
+                    validate: function(value) {
+                        return value !== '';
+                    },
+                    when: function (answers) {
+                        return answers.useFile;
+                    }
+                },
+                {
+                    type: 'editor',
+                    name: 'metaData',
+                    message: 'Add your metadata in JSON format',
+                    default: function(answers) {
+                        return JSON.stringify({
+                            name: 'Bobby Tables'
+                        }, null, 4)
+                    },
+                    validate: function(value) {
+                        let parsed = null;
+
+                        try {
+                            parsed = JSON.parse(value);
+                        } catch(err) {
+
+                        }
+
+                        return parsed && typeof parsed === 'object';
+                    },
+                    when: function (answers) {
+                        return answers.useFile;
+                    }
+                }
+            ])
+            .then((answers) => {
+                let sheet = {};
+                
+                if (answers.useFile) {
+                    sheet = {
+                        name: answers.name,
+                        templateFilename: file,
+                        exportFilename: answers.exportFilename,
+                        metaData: JSON.parse(answers.metaData)
+                    }
+                }
+
+                return sheet;
+            });
+        });
+
+        config.set('sheets', sheetConfig);
     }
 
     // Wrap up
@@ -189,6 +304,20 @@ function defer() {
     };
 }
 
+function promiseWhile(condition, action) {
+    return new Promise(function (resolve, reject) {
+        var loop = function (result) {
+            if (!condition(result)) return resolve();
+            return Promise.cast(action())
+                .then(loop)
+                .catch(function (e) {
+                    reject(e);
+                });
+        };
+        process.nextTick(loop);
+    });
+}
+
 function openBrowser(deferred) {    
     opn(auth.getAuthUrl());
 }
@@ -200,7 +329,9 @@ function setLoader() {
 }
 
 function stopLoader() {
-    spinner.stop(true);
+    if (spinner) {
+        spinner.stop(true);
+    }
 }
 
 function getCalendars() {
@@ -217,19 +348,24 @@ function createDirectories(paths) {
     return Promise.all(paths.map((path) => fs.mkdirp(path)));
 }
 
-function createConfig(path, answers) {
+function createConfig(path) {
     config = new Conf({
         defaults: defaultConfig,
         configName: 'config',
         cwd: path
     });
-
-    config.set('paths.hourSheets', answers.exportPathHourSheets);
-    config.set('paths.declarations', answers.exportPathDeclarations);
-    
-    prefs.path = answers.configPath;
-
-    return answers;
 }
 
+function getTemplateFiles(path) {
+    // TODO: Find out why promisify doesnt work
+    return new Promise((resolve, reject) => {
+        fs.readdir(path, (err, files) => {
+            if (err) {
+                reject(err);
+            } else {
+                resolve(files);
+            }
+        });
+    });
+}
 

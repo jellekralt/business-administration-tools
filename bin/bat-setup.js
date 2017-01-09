@@ -86,17 +86,23 @@ Promise.coroutine(function *() {
         default: true
     });
 
-    if (useGoogleCalendar.useCalendar && !prefs.oAuthTokens) {
-        // Start local server
-        let deferred = yield startServer();
-        // Open the browser
-        openBrowser(); 
-        // Get the code from the browser request, store it in prefs
-        let code = yield deferred.promise;
-        prefs.oAuthCode = code;
-        // Get an oauth token with the code, store it in prefs
-        let tokens = yield auth.getToken(code);
-        prefs.oAuthTokens = tokens;
+    if (useGoogleCalendar.useCalendar) {
+
+        setLoader();
+
+        if (!prefs.oAuthTokens) {
+            // Start local server
+            let deferred = yield startServer();
+            // Open the browser
+            openBrowser(); 
+            // Get the code from the browser request, store it in prefs
+            let code = yield deferred.promise;
+            prefs.oAuthCode = code;
+            // Get an oauth token with the code, store it in prefs
+            let tokens = yield auth.getToken(code);
+            prefs.oAuthTokens = tokens;
+        }
+
         // Fetch the calendars
         let calendars = yield getCalendars();
         // Stop the loader
@@ -142,7 +148,6 @@ function startServer() {
     return new Promise((resolve, reject) => {
         let deferred = defer();
 
-        setLoader();
         server = http.createServer((req, res) => listen(req, res, deferred));
         server.listen(9999, () => {
             resolve(deferred);
@@ -150,7 +155,7 @@ function startServer() {
 
     });
 }
-
+ 
 function listen(req, res, deferred) {
     let parsedUrl = url.parse(req.url, true); // true to get query as object
     let qParams = parsedUrl.query;

@@ -56,6 +56,7 @@ Promise.coroutine(function *() {
             year: answers.year, 
             month: answers.month,
             credentials: prefs.oAuthTokens,
+            authClient: prefs.oAuthClient,
             templatePath: `${prefs.path}/templates`,
             hourSheetPath: config.get('paths.hourSheets'),
             declarationPath: config.get('paths.declarations'),

@@ -110,14 +110,45 @@ Promise.coroutine(function *() {
     if (parts.calendar) {
     
         // Ask for Google Calendar integration
-        let useGoogleCalendar = yield inquirer.prompt({
-            type: 'confirm',
-            name: 'useCalendar',
-            message: 'Do you want to link your Google Calendar account?',
-            default: true
-        });
+        let useGoogleCalendar = yield inquirer.prompt([
+            {
+                type: 'confirm',
+                name: 'useCalendar',
+                message: 'Do you want to link your Google Calendar account?',
+                default: true
+            },
+            {
+                type: 'input',
+                name: 'clientId',
+                message: 'Enter your Google API Client ID',
+                validate: function(value) {
+                    return value !== '';
+                },
+                when: function (answers) {
+                    return answers.useCalendar;
+                }
+            },
+            {
+                type: 'input',
+                name: 'clientSecret',
+                message: 'Enter your Google API Client Secret',
+                validate: function(value) {
+                    return value !== '';
+                },
+                when: function (answers) {
+                    return answers.useCalendar;
+                }
+            }
+        ]);
 
         if (useGoogleCalendar.useCalendar) {
+
+            prefs.oAuthClient = {
+                id: useGoogleCalendar.clientId,
+                secret: useGoogleCalendar.clientSecret
+            };
+
+            auth.setClientData(useGoogleCalendar.clientId, useGoogleCalendar.clientSecret);
 
             setLoader();
 
@@ -335,8 +366,11 @@ function stopLoader() {
 }
 
 function getCalendars() {
+    console.log('prefs.oAuthClient', prefs.oAuthClient);
+    
     var cal = Calendar.init({
-        credentials: prefs.oAuthTokens
+        credentials: prefs.oAuthTokens,
+        oAuthClient: prefs.oAuthClient
     });
 
     return cal.getCalendars();
